@@ -120,10 +120,11 @@ namespace CtsTrades
     {
         public static void MeasureTime(string message, Action action)
         {
+            Console.WriteLine($"{message}");
             Stopwatch stopwatch = Stopwatch.StartNew();
             action();
             stopwatch.Stop();
-            Console.WriteLine($"{message} elapsed {stopwatch.Elapsed}");
+            Console.WriteLine($"... elapsed {stopwatch.Elapsed}");
         }
     }
 
@@ -131,9 +132,9 @@ namespace CtsTrades
     {
         static readonly string fileName = "TradesList.xml";
 
-        static readonly int numberOfTrades = 10;
-        static readonly int groupBy = 21;
-        static readonly int numberOfRetries = 3;
+        static readonly int numberOfTrades = 10000;
+        static readonly int groupBy = 13;
+        static readonly int numberOfRetries = 10;
 
         static IEnumerable<XmlTrade> CustomDeserialize(XElement root)
         {
@@ -153,6 +154,27 @@ namespace CtsTrades
                 Quantity = Decimal.Parse(t.ElementValue(quantityElement)),
                 Price = Decimal.Parse(t.ElementValue(priceElement))
             });
+        }
+
+        class BestTrade
+        {
+            public string ISIN { get; set; }
+            public int TradesCount { get; set; }
+            public decimal Sum { get; set; }
+        }
+
+        static void BestTrades(string direction, IEnumerable<XmlTrade> trades,
+                        Func<IEnumerable<XmlTrade>, Func<XmlTrade, decimal>, IEnumerable<XmlTrade>> orderByTrades,
+                        Func<IEnumerable<BestTrade>, Func<BestTrade, decimal>, IEnumerable<BestTrade>> orderByBestTrades)
+        {
+            var bestBuys = trades.Where(t => t.Direction == direction).ToDictionaryMany(t => t.ISIN).Select(t => new BestTrade
+            {
+                ISIN = t.Key,
+                TradesCount = t.Value.Count(),
+                Sum = orderByTrades(t.Value, trade => trade.Price).Take(10).Sum(trade => trade.Price)
+            });
+            orderByBestTrades(bestBuys, _ => _.Sum).Take(3).Each(_ => Console.WriteLine($"{_.ISIN}: {_.Sum}/{_.TradesCount}"));
+
         }
 
         public static void Main(string[] args)
@@ -202,7 +224,7 @@ namespace CtsTrades
             {
                 trades2.Grouped(groupBy).Each((trades, index) =>
                 {
-                    var transactionName = index.ToString();
+                    var transactionName = $"no {index.ToString()}";
 
                     var failOrRetry = true;
                     var retry = 0;
@@ -212,10 +234,8 @@ namespace CtsTrades
                         try
                         {
                             trades.Each(trade =>
-                            {
-                                adapter.Process(Operation.Insert, "INSERT INTO dbo.Trades(ISIN, Quantity, Price, Direction)" +
-                                                "VALUES(@1, @2, @3, @4);", trade.ISIN, trade.Quantity, trade.Price, trade.Direction);
-                            });
+                                adapter.Process(Operation.Insert, "INSERT INTO dbo.Trades(ISIN, Quantity, Price, Direction) " +
+                                                $"VALUES({trade.ISIN}, {trade.Quantity}, {trade.Price}, {trade.Direction});"));
                             adapter.CommitTransaction(transactionName);
                             //if (retry == 0)
                             //{
@@ -234,7 +254,7 @@ namespace CtsTrades
                             //Console.WriteLine($"Exception {e.Message} in transaction {transactionName}/{retry}.");
 
                             retry++;
-                            if (retry > numberOfRetries)
+                            if (retry >= numberOfRetries)
                             {
                                 failOrRetry = false;
                                 Console.WriteLine($"Uncompleted transaction {transactionName}.");
@@ -258,27 +278,6 @@ namespace CtsTrades
                            (trades, orderBySelector) => trades.OrderByDescending(orderBySelector),
                            (bestTrades, orderBySelector) => bestTrades.OrderByDescending(orderBySelector));
             });
-        }
-
-        class BestTrade
-        {
-            public string ISIN { get; set; }
-            public int TradesCount { get; set; }
-            public decimal Sum { get; set; }
-        }
-
-        static void BestTrades(string direction, IEnumerable<XmlTrade> trades, 
-                        Func<IEnumerable<XmlTrade>, Func<XmlTrade, decimal>, IEnumerable<XmlTrade>> orderByTrades, 
-                        Func<IEnumerable<BestTrade>, Func<BestTrade, decimal>, IEnumerable<BestTrade>> orderByBestTrades)
-        {
-            var bestBuys = trades.Where(t => t.Direction == direction).ToDictionaryMany(t => t.ISIN).Select(t => new BestTrade
-            {
-                ISIN = t.Key,
-                TradesCount = t.Value.Count(),
-                Sum = orderByTrades(t.Value, trade => trade.Price).Take(10).Sum(trade => trade.Price)
-            });
-            orderByBestTrades(bestBuys, _ => _.Sum).Take(3).Each(_ => Console.WriteLine($"{_.ISIN}: {_.Sum}/{_.TradesCount}"));
-
         }
     }
 }
