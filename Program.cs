@@ -6,12 +6,11 @@ using System.Xml.Serialization;
 using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using CTSTestApplication;
 
 namespace CtsTrades
 {
-    enum TradeType { B, S }
-
     [XmlRoot("TradesList", Namespace="http://www.cts-tradeit.com")]
     public class XmlTradeList
     {
@@ -130,10 +129,9 @@ namespace CtsTrades
 
     class MainClass
     {
-        static readonly string path = "/Users/odrichvorechovskyjr/Downloads/Zadanie";
         static readonly string fileName = "TradesList.xml";
 
-        static readonly int numberOfTrades = 1000;
+        static readonly int numberOfTrades = 10;
         static readonly int groupBy = 21;
         static readonly int numberOfRetries = 3;
 
@@ -159,6 +157,10 @@ namespace CtsTrades
 
         public static void Main(string[] args)
         {
+            var currentPath = System.IO.Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
+            Console.WriteLine($"Current path {currentPath}");
+            var path = Path.Combine(currentPath, "../../..");
+
             DebugHelper.MeasureTime($"Creating test file of {numberOfTrades}", () =>
             {
                 new Tester().CreateTestFile(path, numberOfTrades);
@@ -182,7 +184,6 @@ namespace CtsTrades
             DebugHelper.MeasureTime("Custom deserializing", () =>
             {
                 trades1 = CustomDeserialize(root);
-                Console.WriteLine($"End of World! {trades1.First().ISIN} {trades1.Count()}");
             });
 
             XmlTrade[] trades2 = null;
@@ -194,7 +195,6 @@ namespace CtsTrades
                 {
                     trades2 = deserialize(reader).Trades;
                 }
-                Console.WriteLine($"End of World! {trades2.First().ISIN} {trades2.Count()}");
             });
 
             var adapter = new DataAdapter(path);
@@ -240,10 +240,6 @@ namespace CtsTrades
                                 Console.WriteLine($"Uncompleted transaction {transactionName}.");
                             }
                         }
-                        finally
-                        {
-                            //adapter.EndTransaction(transactionName);
-                        }
                     }
                 });
             });
@@ -275,7 +271,7 @@ namespace CtsTrades
                         Func<IEnumerable<XmlTrade>, Func<XmlTrade, decimal>, IEnumerable<XmlTrade>> orderByTrades, 
                         Func<IEnumerable<BestTrade>, Func<BestTrade, decimal>, IEnumerable<BestTrade>> orderByBestTrades)
         {
-            var bestBuys = trades.Where(t => t.Direction == "B").ToDictionaryMany(t => t.ISIN).Select(t => new BestTrade
+            var bestBuys = trades.Where(t => t.Direction == direction).ToDictionaryMany(t => t.ISIN).Select(t => new BestTrade
             {
                 ISIN = t.Key,
                 TradesCount = t.Value.Count(),
