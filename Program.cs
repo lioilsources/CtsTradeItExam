@@ -132,7 +132,7 @@ namespace CtsTrades
     {
         static readonly string fileName = "TradesList.xml";
 
-        static readonly int numberOfTrades = 10000;
+        static readonly int numberOfTrades = 1000000;
         static readonly int groupBy = 13;
         static readonly int numberOfRetries = 10;
 
@@ -180,8 +180,12 @@ namespace CtsTrades
         public static void Main(string[] args)
         {
             var currentPath = System.IO.Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
-            Console.WriteLine($"Current path {currentPath}");
+            Console.WriteLine($"Current path {currentPath}.");
             var path = Path.Combine(currentPath, "../../..");
+            Console.WriteLine($"Looking for source files in {new DirectoryInfo(path).FullName}.");
+
+            TextWriterTraceListener tl = new TextWriterTraceListener(System.Console.Out);
+            Debug.Listeners.Add(tl);
 
             DebugHelper.MeasureTime($"Creating test file of {numberOfTrades}", () =>
             {
@@ -237,21 +241,21 @@ namespace CtsTrades
                                 adapter.Process(Operation.Insert, "INSERT INTO dbo.Trades(ISIN, Quantity, Price, Direction) " +
                                                 $"VALUES({trade.ISIN}, {trade.Quantity}, {trade.Price}, {trade.Direction});"));
                             adapter.CommitTransaction(transactionName);
-                            //if (retry == 0)
-                            //{
-                            //    Console.WriteLine($"Successful transaction {transactionName}.");
-                            //}
-                            //else
-                            //{
-                            //    Console.WriteLine($"Successful transaction {transactionName} on {retry}. retry.");
-                            //}
+                            if (retry == 0)
+                            {
+                                Debug.WriteLine($"Successful transaction {transactionName}.");
+                            }
+                            else
+                            {
+                                Debug.WriteLine($"Successful transaction {transactionName} on {retry}. retry.");
+                            }
 
                             failOrRetry = false;
                         }
                         catch (Exception e)
                         {
                             adapter.RollbackTransaction(transactionName);
-                            //Console.WriteLine($"Exception {e.Message} in transaction {transactionName}/{retry}.");
+                            Debug.WriteLine($"Exception {e.Message} in transaction {transactionName}/{retry}.");
 
                             retry++;
                             if (retry >= numberOfRetries)
@@ -262,6 +266,8 @@ namespace CtsTrades
                         }
                     }
                 });
+
+                Debug.Flush();
             });
 
             // best trades
