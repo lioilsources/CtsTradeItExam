@@ -30,12 +30,12 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
-    <Reference Include="CTSTestApplication">
-      <HintPath>..\CTSTestApplication.dll</HintPath>
-    </Reference>
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Xml.Serialization" />
     <Reference Include="System.Xml" />
+    <Reference Include="CTSTestApplication">
+      <HintPath>Library\CTSTestApplication.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />

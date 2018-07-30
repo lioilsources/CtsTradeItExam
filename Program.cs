@@ -132,8 +132,8 @@ namespace CtsTrades
     {
         static readonly string fileName = "TradesList.xml";
 
-        static readonly int numberOfTrades = 1000000;
-        static readonly int groupBy = 13;
+        static readonly int numberOfTrades = 50000;
+        static readonly int groupBy = 9;
         static readonly int numberOfRetries = 10;
 
         static IEnumerable<XmlTrade> CustomDeserialize(XElement root)
@@ -154,6 +154,15 @@ namespace CtsTrades
                 Quantity = Decimal.Parse(t.ElementValue(quantityElement)),
                 Price = Decimal.Parse(t.ElementValue(priceElement))
             });
+        }
+
+        static IEnumerable<XmlTrade> ApiDeserialize(string data)
+        {
+            var deserialize = XmlExtensions.Deserializer<XmlTradeList>();
+            using (var reader = new XmlTextReader(new StringReader(data)))
+            {
+                return deserialize(reader).Trades;
+            }
         }
 
         class BestTrade
@@ -181,52 +190,43 @@ namespace CtsTrades
         {
             var currentPath = System.IO.Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
             Console.WriteLine($"Current path {currentPath}.");
-            var path = Path.Combine(currentPath, "../../..");
-            Console.WriteLine($"Looking for source files in {new DirectoryInfo(path).FullName}.");
+            var pathInput = Path.Combine(currentPath, "../../Data");
+            Console.WriteLine($"Looking for source files in {new DirectoryInfo(pathInput).FullName}.");
 
             TextWriterTraceListener tl = new TextWriterTraceListener(System.Console.Out);
             Debug.Listeners.Add(tl);
 
             DebugHelper.MeasureTime($"Creating test file of {numberOfTrades}", () =>
             {
-                new Tester().CreateTestFile(path, numberOfTrades);
+                new Tester().CreateTestFile(pathInput, numberOfTrades);
             });
 
             string data = null;
             DebugHelper.MeasureTime("Reading file", () =>
             {
-                data = File.ReadAllText(Path.Combine(path, fileName));
+                data = File.ReadAllText(Path.Combine(pathInput, fileName));
             });
 
-            XDocument document = null;
-            DebugHelper.MeasureTime("Parsing XML", () =>
+            // Worse performance than Custom deserialization but less code
+            //IEnumerable<XmlTrade> trades2 = null;
+            //DebugHelper.MeasureTime("Deserializing API", () =>
+            //{
+            //    trades2 = ApiDeserialize(data);
+            //});
+
+            IEnumerable<XmlTrade> trades = null;
+            DebugHelper.MeasureTime("Parsing XML + Custom deserializing", () =>
             {
-                document = XDocument.Parse(data);
+                var document = XDocument.Parse(data);            
+                trades = CustomDeserialize(document.Root);
             });
 
-            var root = document.Root;
-
-            IEnumerable<XmlTrade> trades1 = null;
-            DebugHelper.MeasureTime("Custom deserializing", () =>
-            {
-                trades1 = CustomDeserialize(root);
-            });
-
-            XmlTrade[] trades2 = null;
-            DebugHelper.MeasureTime("Deserializing API", () =>
-            {
-                
-                var deserialize = XmlExtensions.Deserializer<XmlTradeList>();
-                using (var reader = new XmlTextReader(new StringReader(data)))
-                {
-                    trades2 = deserialize(reader).Trades;
-                }
-            });
-
-            var adapter = new DataAdapter(path);
+            var pathOutput = Path.Combine(currentPath, "../../Output");
+            var adapter = new DataAdapter(pathOutput);
             DebugHelper.MeasureTime("PROCESS DATABASE", () =>
             {
-                trades2.Grouped(groupBy).Each((trades, index) =>
+                var globalRetries = 0;
+                trades.Grouped(groupBy).Each((tradesGroup, index) =>
                 {
                     var transactionName = $"no {index.ToString()}";
 
@@ -237,7 +237,7 @@ namespace CtsTrades
                         adapter.BeginTransaction(transactionName);
                         try
                         {
-                            trades.Each(trade =>
+                            tradesGroup.Each(trade =>
                                 adapter.Process(Operation.Insert, "INSERT INTO dbo.Trades(ISIN, Quantity, Price, Direction) " +
                                                 $"VALUES({trade.ISIN}, {trade.Quantity}, {trade.Price}, {trade.Direction});"));
                             adapter.CommitTransaction(transactionName);
@@ -258,6 +258,7 @@ namespace CtsTrades
                             Debug.WriteLine($"Exception {e.Message} in transaction {transactionName}/{retry}.");
 
                             retry++;
+                            globalRetries++;
                             if (retry >= numberOfRetries)
                             {
                                 failOrRetry = false;
@@ -268,20 +269,21 @@ namespace CtsTrades
                 });
 
                 Debug.Flush();
+                Console.WriteLine($"Transactions/No of retries/Operations: {numberOfTrades / groupBy}/{globalRetries}/{numberOfTrades / groupBy + globalRetries}");
             });
 
             // best trades
             DebugHelper.MeasureTime("Best BUYS / from lower", () =>
             {
-                 BestTrades("B", trades1, 
-                           (trades, orderBySelector) => trades.OrderBy(orderBySelector),
+                 BestTrades("B", trades, 
+                           (buys, orderBySelector) => buys.OrderBy(orderBySelector),
                            (bestTrades, orderBySelector) => bestTrades.OrderBy(orderBySelector));
             });
 
             DebugHelper.MeasureTime("Best SELS / from higher", () =>
             {
-                BestTrades("S", trades2,
-                           (trades, orderBySelector) => trades.OrderByDescending(orderBySelector),
+                BestTrades("S", trades,
+                           (sels, orderBySelector) => sels.OrderByDescending(orderBySelector),
                            (bestTrades, orderBySelector) => bestTrades.OrderByDescending(orderBySelector));
             });
         }
