@@ -65,3 +65,7 @@ Program.cs - řešení úkolu\
 /Data - XML s vygenerovanými obchody\
 /Library - testovací knihovna\
 /Output - LOG simulovaného ukládání do DB
+
+# Poznámky
+Chtěl bych upozornit na nedostatek v chování testovací knihovny, kdy v LOG souboru informuje o otevření Connection, 
+ale Connection se nikde nezavírá, ani není možné ji programově zavřít.
